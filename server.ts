@@ -118,8 +118,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Fullstack Server] Running on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, "localhost", () => {
+    console.log(`[Fullstack Server] Running on http://localhost:${PORT}`);
   });
 }
 
