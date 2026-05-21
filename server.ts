@@ -1,17 +1,17 @@
-// server.ts - Netlify Functions compatible server
+// server.ts - supports local dev, production, and Netlify Functions
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-import serverless from "serverless-http"; // Netlify wrapper
+import serverless from "serverless-http";
 
 dotenv.config();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const HOST = process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost";
+const HOST = "localhost";
 
-// Lazy Gemini client initialization
+// ---------- Gemini client ----------
 let aiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI {
   if (!aiClient) {
@@ -45,27 +45,27 @@ const DEFAULT_SYSTEM_INSTRUCTION = `
 請以 Markdown 格式輸出，所有繁體中文部分必須使用**繁體中文**回覆，不要包含任何額外的問候語或結語。
 `;
 
-export function createApp(): express.Express {
+// ---------- Express API routes (shared across all modes) ----------
+function createApiApp(): express.Express {
   const app = express();
-
-  // JSON body limit
   app.use(express.json({ limit: "15mb" }));
 
-  // Health check
-  app.get("/api/health", (req, res) => {
+  app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
   });
 
-  // AI analysis endpoint
   app.post("/api/analyze", async (req, res) => {
     try {
-      const { csvContent, customInstruction, modelType = "gemini-3.5-flash" } = req.body;
+      const { csvContent, customInstruction, modelType = "gemini-2.0-flash" } = req.body;
       if (!csvContent || typeof csvContent !== "string" || csvContent.trim() === "") {
         return res.status(400).json({ error: "無效的內容，請貼上或上傳 CSV 資料。" });
       }
 
       const ai = getGeminiClient();
-      const sysInstruction = customInstruction && customInstruction.trim() !== "" ? customInstruction : DEFAULT_SYSTEM_INSTRUCTION;
+      const sysInstruction =
+        customInstruction && customInstruction.trim() !== ""
+          ? customInstruction
+          : DEFAULT_SYSTEM_INSTRUCTION;
 
       const response = await ai.models.generateContent({
         model: modelType,
@@ -81,39 +81,62 @@ export function createApp(): express.Express {
         throw new Error("AI 未能產生有效的分析結果。請重試或更換資料集。");
       }
 
-      return res.json({ success: true, result: text, modelUsed: modelType, timestamp: new Date().toISOString() });
+      return res.json({
+        success: true,
+        result: text,
+        modelUsed: modelType,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error: any) {
       console.error("Gemini API server error:", error);
-      return res.status(500).json({ success: false, error: error.message || "發生未知的伺服器錯誤資料處理失敗。" });
+      return res
+        .status(500)
+        .json({ success: false, error: error.message || "發生未知的伺服器錯誤，資料處理失敗。" });
     }
   });
-
-  // Asset handling for dev vs prod
-  if (process.env.NODE_ENV !== "production") {
-    // Development: Vite middleware (async)
-    (async () => {
-      const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
-      app.use(vite.middlewares);
-    })();
-  } else {
-    // Production: serve static files
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
 
   return app;
 }
 
-// Create a single instance for Netlify
-const appInstance = createApp();
-export const handler = serverless(appInstance);
+// ---------- Development mode: Express + Vite middleware ----------
+async function startDevServer() {
+  const app = createApiApp();
 
-// Local dev server (when not on Netlify)
-if (process.env.NETLIFY !== "true") {
-  appInstance.listen(PORT, HOST, () => {
-    console.log(`[Fullstack Server] Running on http://${HOST}:${PORT}`);
+  // Await Vite fully before attaching its middleware,
+  // so API routes registered above always win over Vite's SPA fallback.
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: "spa",
   });
+  app.use(vite.middlewares);
+
+  app.listen(PORT, HOST, () => {
+    console.log(`[Dev Server] Running on http://${HOST}:${PORT}`);
+  });
+}
+
+// ---------- Production mode: serve built static files ----------
+function createProdApp(): express.Express {
+  const app = createApiApp();
+  const distPath = path.join(process.cwd(), "dist");
+  app.use(express.static(distPath));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+  return app;
+}
+
+// ---------- Entry point ----------
+if (process.env.NETLIFY === "true") {
+  // Netlify Functions: export serverless handler, no local listen needed
+  const prodApp = createProdApp();
+  module.exports.handler = serverless(prodApp);
+} else if (process.env.NODE_ENV === "production") {
+  const prodApp = createProdApp();
+  prodApp.listen(PORT, HOST, () => {
+    console.log(`[Production Server] Running on http://${HOST}:${PORT}`);
+  });
+} else {
+  // Default: local development
+  startDevServer();
 }
