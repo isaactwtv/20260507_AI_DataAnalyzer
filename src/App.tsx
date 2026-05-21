@@ -140,11 +140,10 @@ export default function App() {
     }));
 
     try {
+      // 呼叫後端分析 API，並確保回傳的是 JSON
       const response = await fetch("/api/analyze", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           csvContent: csvInput,
           customInstruction: customSystemInstruction,
@@ -152,10 +151,23 @@ export default function App() {
         })
       });
 
+      // 先檢查 HTTP 狀態，避免把 HTML 當成 JSON 解析
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`HTTP ${response.status}: ${text}`);
+      }
+
+      // 確認 Content-Type 為 JSON
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const text = await response.text();
+        throw new Error(`Unexpected response type (${contentType}): ${text}`);
+      }
+
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "連線至後端分析 API 失敗，請重試。");
+      if (!data.success) {
+        throw new Error(data.error || "分析 API 回傳失敗，請重試。");
       }
 
       setAnalysis({
@@ -163,7 +175,7 @@ export default function App() {
         error: null,
         result: data.result,
         modelUsed: data.modelUsed,
-        timestamp: data.timestamp
+        timestamp: data.timestamp,
       });
     } catch (err: any) {
       console.error(err);
