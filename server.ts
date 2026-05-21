@@ -116,7 +116,7 @@ async function startDevServer() {
 }
 
 // ---------- Production mode: serve built static files ----------
-function createProdApp(): express.Express {
+export function createProdApp(): express.Express {
   const app = createApiApp();
   const distPath = path.join(process.cwd(), "dist");
   app.use(express.static(distPath));
