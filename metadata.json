@@ -1,0 +1,6 @@
+{
+  "name": "AI 數據分析與洞察工具",
+  "description": "這是一款專為數據分析與商業決策設計的工具。使用者可上傳或貼上 CSV 資料，由專業 AI 分析核心進行結構化解讀、找出隱藏趨勢、提供洞察報告與具體待辦事項，提升決策效率。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
