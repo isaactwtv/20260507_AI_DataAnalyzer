@@ -6,7 +6,8 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const HOST = process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost";
 
 // Lazy initialization of Gemini client to avoid crash on startup if key is missing
 let aiClient: GoogleGenAI | null = null;
@@ -118,8 +119,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "localhost", () => {
-    console.log(`[Fullstack Server] Running on http://localhost:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`[Fullstack Server] Running on http://${HOST}:${PORT}`);
   });
 }
 
