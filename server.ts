@@ -127,11 +127,11 @@ function createProdApp(): express.Express {
 }
 
 // ---------- Entry point ----------
-if (process.env.NETLIFY === "true") {
-  // Netlify Functions: export serverless handler, no local listen needed
-  const prodApp = createProdApp();
-  module.exports.handler = serverless(prodApp);
-} else if (process.env.NODE_ENV === "production") {
+// Netlify Functions handler (ES module default export)
+export default process.env.NETLIFY === "true" ? serverless(createProdApp()) : undefined;
+
+// Production server (when not on Netlify)
+if (process.env.NODE_ENV === "production") {
   const prodApp = createProdApp();
   prodApp.listen(PORT, HOST, () => {
     console.log(`[Production Server] Running on http://${HOST}:${PORT}`);
