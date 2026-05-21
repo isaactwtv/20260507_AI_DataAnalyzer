@@ -75,8 +75,7 @@ npm run start
 
 ### 3. 雲端平台部署
 
-本專案支援一鍵部署至各大雲端託管平台（例如 Render, Fly.io, Heroku 等）：
-- **Build Command (建置指令)**: `npm install && npm run build`
-- **Start Command (啟動指令)**: `npm run start`
-- **環境變數 (Environment Variables)**: 請在平台主面板中配置 `GEMINI_API_KEY` 與 `NODE_ENV=production`。
-
+本專案已適配 Netlify 部署，使用 Netlify Functions 及靜態檔案托管。
+- **Build Command (建置指令)**: `npm install && npm run build && npm run netlify:func`
+- **Deploy**: 直接將 `dist` 目錄與 `netlify/functions` 上傳至 Netlify，或使用 Netlify CLI `netlify deploy`。
+- **環境變數 (Environment Variables)**: 在 Netlify 設定面板中配置 `GEMINI_API_KEY` 與 `NODE_ENV=production`。

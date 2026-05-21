@@ -1,15 +1,17 @@
+// server.ts - Netlify Functions compatible server
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import serverless from "serverless-http"; // Netlify wrapper
 
 dotenv.config();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const HOST = process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost";
 
-// Lazy initialization of Gemini client to avoid crash on startup if key is missing
+// Lazy Gemini client initialization
 let aiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI {
   if (!aiClient) {
@@ -17,9 +19,7 @@ function getGeminiClient(): GoogleGenAI {
     if (!apiKey) {
       throw new Error("GEMINI_API_KEY 尚未設定，請在專案根目錄的 .env 檔案中配置金鑰。");
     }
-    aiClient = new GoogleGenAI({
-      apiKey: apiKey,
-    });
+    aiClient = new GoogleGenAI({ apiKey });
   }
   return aiClient;
 }
@@ -45,40 +45,34 @@ const DEFAULT_SYSTEM_INSTRUCTION = `
 請以 Markdown 格式輸出，所有繁體中文部分必須使用**繁體中文**回覆，不要包含任何額外的問候語或結語。
 `;
 
-async function startServer() {
+export function createApp(): express.Express {
   const app = express();
 
-  // Support larger body payload for rich CSV spreadsheets
+  // JSON body limit
   app.use(express.json({ limit: "15mb" }));
 
-  // API router for health checks
+  // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
   });
 
-  // API route for AI Analysis
+  // AI analysis endpoint
   app.post("/api/analyze", async (req, res) => {
     try {
       const { csvContent, customInstruction, modelType = "gemini-3.5-flash" } = req.body;
-
       if (!csvContent || typeof csvContent !== "string" || csvContent.trim() === "") {
         return res.status(400).json({ error: "無效的內容，請貼上或上傳 CSV 資料。" });
       }
 
-      // Initialize client lazily to output cleaner error message if unconfigured
       const ai = getGeminiClient();
+      const sysInstruction = customInstruction && customInstruction.trim() !== "" ? customInstruction : DEFAULT_SYSTEM_INSTRUCTION;
 
-      const sysInstruction = customInstruction && customInstruction.trim() !== ""
-        ? customInstruction
-        : DEFAULT_SYSTEM_INSTRUCTION;
-
-      // Call Gemini API using the official stable @google/genai syntax
       const response = await ai.models.generateContent({
         model: modelType,
         contents: `以下是需要分析的 CSV 報表內容：\n\n\`\`\`csv\n${csvContent}\n\`\`\``,
         config: {
           systemInstruction: sysInstruction,
-          temperature: 0.2, // Low temperature for factual data analysis
+          temperature: 0.2,
         },
       });
 
@@ -87,31 +81,22 @@ async function startServer() {
         throw new Error("AI 未能產生有效的分析結果。請重試或更換資料集。");
       }
 
-      return res.json({
-        success: true,
-        result: text,
-        modelUsed: modelType,
-        timestamp: new Date().toISOString()
-      });
-
+      return res.json({ success: true, result: text, modelUsed: modelType, timestamp: new Date().toISOString() });
     } catch (error: any) {
       console.error("Gemini API server error:", error);
-      return res.status(500).json({
-        success: false,
-        error: error.message || "發生未知的伺服器錯誤資料處理失敗。"
-      });
+      return res.status(500).json({ success: false, error: error.message || "發生未知的伺服器錯誤資料處理失敗。" });
     }
   });
 
-  // Vite middleware pipeline for development process
+  // Asset handling for dev vs prod
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    // Development: Vite middleware (async)
+    (async () => {
+      const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+      app.use(vite.middlewares);
+    })();
   } else {
-    // Production output asset binding
+    // Production: serve static files
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
@@ -119,11 +104,16 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, HOST, () => {
+  return app;
+}
+
+// Create a single instance for Netlify
+const appInstance = createApp();
+export const handler = serverless(appInstance);
+
+// Local dev server (when not on Netlify)
+if (process.env.NETLIFY !== "true") {
+  appInstance.listen(PORT, HOST, () => {
     console.log(`[Fullstack Server] Running on http://${HOST}:${PORT}`);
   });
 }
-
-startServer().catch((err) => {
-  console.error("Failed to start fullstack server:", err);
-});
