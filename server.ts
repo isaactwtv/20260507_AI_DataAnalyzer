@@ -14,15 +14,10 @@ function getGeminiClient(): GoogleGenAI {
   if (!aiClient) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("GEMINI_API_KEY 尚未設定，請在 Settings > Secrets 面板中配置金鑰。");
+      throw new Error("GEMINI_API_KEY 尚未設定，請在專案根目錄的 .env 檔案中配置金鑰。");
     }
     aiClient = new GoogleGenAI({
       apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
     });
   }
   return aiClient;
